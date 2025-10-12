@@ -25,7 +25,9 @@ def load_cnn_model():
         st.error(f"Model not found or failed to load: {e}")
         return None
 
-model = load_cnn_model()
+import os
+model_path = os.path.join(os.path.dirname(__file__), "my_exo_model.keras")
+model = load_model(model_path)
 
 uploaded_file = st.file_uploader("📂 Upload your flux data (CSV)", type=["csv"])
 
