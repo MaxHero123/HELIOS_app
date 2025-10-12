@@ -7,7 +7,7 @@ from utils import fourier, savgol, norm, robust, smote
 
 st.set_page_config(page_title="Exoplanet Detection AI", page_icon="🪐", layout="wide")
 
-st.title("🪐 Exoplanet Detection AI")
+st.title("🪐 HELIOS (Exoplanet Detection AI)")
 st.markdown("""
 This web app uses a **1D Convolutional Neural Network (CNN)** trained on flux data 
 to detect the presence of **exoplanets** in light curves.
@@ -80,8 +80,8 @@ if uploaded_file:
 st.markdown("---")
 st.subheader("💡 About This Project")
 st.markdown("""
-**Created for the Congressional App Challenge**  
-- **Developer:** [Your Name Here]  
+**A Novel Machine Learning Pipeline for High-Accuracy Exoplanet Light-Cruve Interpretation with Optimized Fourier Analysis and SMOTE Synthesis**  
+- **Developer:** Maximilian Solomon  
 - **Model:** 1D CNN trained on NASA Kepler flux data  
 - **Libraries:** TensorFlow, NumPy, SciPy, scikit-learn, imbalanced-learn, Streamlit  
 """)
