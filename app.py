@@ -18,7 +18,8 @@ st.title("🪐 HELIOS (Exoplanet Detection AI)")
 st.markdown("""
 This web app uses a **1D CNN** trained on flux data to detect exoplanets.
 
-Pipeline: **Resize → Fourier → Normalization**
+Pipeline: **Resize → Fourier → Normalization**  
+Now with **sliding windows** for better detection of sparse transits.
 """)
 
 # -----------------------
@@ -37,7 +38,6 @@ except Exception as e:
 # -----------------------
 uploaded_file = st.file_uploader("📂 Upload CSV flux data", type=["csv"])
 
-df = None
 if uploaded_file:
     try:
         df = pd.read_csv(uploaded_file)
@@ -52,41 +52,59 @@ if uploaded_file:
 # -----------------------
 # Run detection
 # -----------------------
-if df is not None and st.button("🔍 Run Exoplanet Detection"):
+if uploaded_file and df is not None and st.button("🔍 Run Exoplanet Detection"):
     try:
-        X = np.array(df.values, dtype=float)
-        if X.ndim == 1:
-            X = np.expand_dims(X, axis=0)
+        X_raw = np.array(df.values, dtype=float)
+        if X_raw.ndim == 1:
+            X_raw = np.expand_dims(X_raw, axis=0)
 
-        # Step 0: Clean input
-        X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
-        st.success("✅ Input cleaned (NaNs/Infs handled)")
+        # Clean input
+        X_raw = np.nan_to_num(X_raw, nan=0.0, posinf=0.0, neginf=0.0)
 
-        # Step 1: Resize
-        X = resize_sequence(X, target_length=TARGET_LENGTH)
-        st.success(f"✅ Resize complete")
+        # -----------------------
+        # Parameters for sliding windows
+        # -----------------------
+        window_size = 500   # can adjust
+        step_size = 100     # overlap
+        threshold = 0.3     # prediction threshold
 
-        # Step 2: Fourier transform
-        _, X = fourier_fixed(X, X, target_length=TARGET_LENGTH)
-        st.success(f"✅ Fourier transform complete")
+        all_preds = []
 
-        # Step 3: Normalization
-        _, X = norm(X, X)
-        st.success(f"✅ Normalization complete")
+        for i in range(0, X_raw.shape[1], step_size):
+            window = X_raw[:, i:i+window_size]
 
-        # Prepare input for CNN
-        X_model = np.expand_dims(X, axis=-1)
+            if window.shape[1] < 10:
+                continue  # skip tiny windows
 
-        # Predict
-        if model:
-            preds = model.predict(X_model)
-            preds = np.nan_to_num(preds, nan=0.0, posinf=0.0, neginf=0.0)
+            # Preprocess window
+            window = resize_sequence(window, target_length=TARGET_LENGTH)
+            _, window = fourier_fixed(window, window, target_length=TARGET_LENGTH)
+            _, window = norm(window, window)
+            X_model = np.expand_dims(window, axis=-1)
 
-            # Plot predictions along sequence
-            st.subheader("📈 CNN Prediction Along Sequence")
+            # Predict
+            if model:
+                preds = model.predict(X_model)
+                preds = np.nan_to_num(preds, nan=0.0, posinf=0.0, neginf=0.0)
+                all_preds.append((i, preds.flatten()))
+        
+        if not all_preds:
+            st.warning("No valid windows found for prediction.")
+        else:
+            # Combine predictions into a single sequence
+            combined_preds = np.zeros(X_raw.shape[1])
+            counts = np.zeros(X_raw.shape[1])
+            for start, pred in all_preds:
+                end = start + len(pred)
+                combined_preds[start:end] += pred[:X_raw.shape[1]-start]
+                counts[start:end] += 1
+            counts[counts==0] = 1
+            combined_preds /= counts
+
+            # Plot
+            st.subheader("📈 CNN Prediction Along Light Curve")
             fig, ax = plt.subplots(figsize=(12,4))
-            ax.plot(preds.flatten(), label="Prediction")
-            threshold = 0.3  # You can adjust this
+            ax.plot(combined_preds, label="Prediction")
             ax.axhline(threshold, color='r', linestyle='--', label=f"Threshold={threshold}")
             ax.set_xlabel("Time / Flux Index")
             ax.set_ylabel("Prediction Confidence")
@@ -94,14 +112,12 @@ if df is not None and st.button("🔍 Run Exoplanet Detection"):
             ax.legend()
             st.pyplot(fig)
 
-            # Highlight overall detection
-            max_pred = float(np.max(preds))
+            # Highlight detection
+            max_pred = float(np.max(combined_preds))
             if max_pred >= threshold:
                 st.success(f"🌍 Potential Exoplanet Detected! Max Confidence: {max_pred:.2f}")
             else:
                 st.info(f"🚫 No Exoplanet Detected. Max Confidence: {max_pred:.2f}")
-        else:
-            st.error("Model not loaded. Place your model file in 'my_new_exo_model.keras/'")
 
     except Exception as e:
         st.error(f"Error while processing data: {e}")
