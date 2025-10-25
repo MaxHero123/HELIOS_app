@@ -24,7 +24,7 @@ Pipeline: **Resize → Fourier → Normalization**
 # -----------------------
 # Load model
 # -----------------------
-model_path = os.path.join(os.path.dirname(__file__), "my_new_exo_model_.keras")
+model_path = os.path.join(os.path.dirname(__file__), "my_new_exo_model.keras")
 try:
     model = load_model(model_path)
 except Exception as e:
