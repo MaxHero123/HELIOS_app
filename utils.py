@@ -2,9 +2,11 @@ import numpy as np
 from scipy.signal import savgol_filter
 from sklearn.preprocessing import RobustScaler
 
-TARGET_LENGTH = 3917  # matches your model input
+# Match your CNN training input length
+TARGET_LENGTH = 3198  
 
 def resize_sequence(X, target_length=TARGET_LENGTH):
+    """Resize each row of X to exactly target_length points using linear interpolation."""
     X = np.atleast_2d(X)
     resized = np.zeros((X.shape[0], target_length))
     for i in range(X.shape[0]):
@@ -16,12 +18,14 @@ def resize_sequence(X, target_length=TARGET_LENGTH):
     return resized
 
 def fourier_fixed(df1, df2, target_length=TARGET_LENGTH):
+    """Apply FFT safely and keep length = target_length"""
     def _fft(arr):
         arr = np.atleast_2d(arr)
         return np.abs(np.fft.fft(arr, n=target_length, axis=1))
     return _fft(df1), _fft(df2)
 
 def safe_savgol_fixed(X, window_length=21, polyorder=3, target_length=TARGET_LENGTH):
+    """Apply Savitzky–Golay safely and resize output to target_length"""
     X = np.atleast_2d(X)
     filtered = np.zeros((X.shape[0], target_length))
     for i in range(X.shape[0]):
