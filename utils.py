@@ -1,32 +1,39 @@
 import numpy as np
-from imblearn.over_sampling import SMOTE
 from scipy.signal import savgol_filter
-from sklearn.preprocessing import RobustScaler, normalize
+from scipy.interpolate import interp1d
+from sklearn.preprocessing import RobustScaler
 
-def smote(a, b):
-    model = SMOTE()
-    X, y = model.fit_resample(a, b)
-    return X, y
+def resize_sequence(arr, target_length=1200):
+    arr = np.atleast_2d(arr)
+    n_samples, n_time = arr.shape
+    x_old = np.arange(n_time)
+    x_new = np.linspace(0, n_time - 1, target_length)
+    resized = np.zeros((n_samples, target_length))
+    for i in range(n_samples):
+        f = interp1d(x_old, arr[i], kind='linear', fill_value="extrapolate")
+        resized[i] = f(x_new)
+    return resized
 
-from scipy.signal import savgol_filter
+def safe_savgol(df1, df2, window_length=3198, polyorder=4):
+    def _filter(arr):
+        arr = np.atleast_2d(arr)
+        n_time = arr.shape[1]
+        wl = min(window_length, n_time)
+        if wl % 2 == 0:
+            wl -= 1
+        if wl < 3:
+            return arr
+        return savgol_filter(arr, window_length=wl, polyorder=polyorder, axis=1, mode='interp')
+    return _filter(df1), _filter(df2)
 
-def savgol(df1, df2, window_length=None, polyorder=4):
-    def _safe_savgol(data, window_length, polyorder):
-        n = len(data)
-        if n < 3:  # too short to smooth
-            return data
-        # window_length must be odd and <= n
-        if window_length is None or window_length > n:
-            window_length = n if n % 2 == 1 else n-1
-        return savgol_filter(data, window_length, polyorder, deriv=0)
-    
-    x = _safe_savgol(df1, window_length, polyorder)
-    y = _safe_savgol(df2, window_length, polyorder)
-    return x, y
-def fourier(df1, df2):
-    X_train = np.abs(np.fft.fft(df1, axis=1))
-    X_test = np.abs(np.fft.fft(df2, axis=1))
-    return X_train, X_test
+def fourier_fixed(df1, df2):
+    def _fft(arr):
+        arr = np.atleast_2d(arr)
+        n_samples, n_time = arr.shape
+        fft_arr = np.abs(np.fft.fft(arr, axis=1))
+        fft_arr = fft_arr[:, :n_time]  # truncate to original length
+        return fft_arr
+    return _fft(df1), _fft(df2)
 
 def norm(X_train, X_test):
     minval = np.minimum(np.min(X_train), np.min(X_test))
