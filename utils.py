@@ -25,29 +25,29 @@ def fourier_fixed(df1, df2, target_length=1200):
         return np.abs(np.fft.fft(arr, n=target_length, axis=1))
     return _fft(df1), _fft(df2)
 
-def safe_savgol(df1, df2, window_length=21, polyorder=3):
+def safe_savgol_fixed(X, window_length=21, polyorder=3, target_length=1200):
     """
-    Apply Savitzky–Golay filter safely. If sequence is shorter than window_length,
-    reduces window_length. Output length may shrink, so caller should resize again.
+    Apply Savitzky–Golay safely on each row and guarantee output length = target_length
     """
-    def _savgol(arr):
-        arr = np.atleast_2d(arr)
-        filtered = np.zeros_like(arr)
-        for i in range(arr.shape[0]):
-            n = arr.shape[1]
-            wl = min(window_length, n if n % 2 == 1 else n-1)
-            wl = max(wl, 3)  # minimum allowed
-            try:
-                filtered[i] = savgol_filter(arr[i], wl, polyorder)
-            except ValueError:
-                filtered[i] = arr[i]
-        return filtered
-    return _savgol(df1), _savgol(df2)
+    X = np.atleast_2d(X)
+    filtered = np.zeros((X.shape[0], target_length))
+    for i in range(X.shape[0]):
+        row = X[i]
+        wl = min(window_length, len(row) if len(row)%2==1 else len(row)-1)
+        wl = max(wl, 3)  # minimum allowed
+        try:
+            sg = savgol_filter(row, wl, polyorder)
+        except ValueError:
+            sg = row
+        # Resize to target_length
+        filtered[i] = np.interp(
+            np.linspace(0, len(sg)-1, target_length),
+            np.arange(len(sg)),
+            sg
+        )
+    return filtered
 
 def norm(X_train, X_test):
-    """
-    Min-max normalize X_train and X_test together.
-    """
     minval = min(np.min(X_train), np.min(X_test))
     maxval = max(np.max(X_train), np.max(X_test))
     X_train = (X_train - minval) / (maxval - minval)
@@ -55,9 +55,6 @@ def norm(X_train, X_test):
     return X_train, X_test
 
 def robust(df1, df2):
-    """
-    Apply RobustScaler to X_train and X_test.
-    """
     scaler = RobustScaler()
     X_train = scaler.fit_transform(df1)
     X_test = scaler.transform(df2)
