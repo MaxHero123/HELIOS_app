@@ -39,9 +39,9 @@ if uploaded_file:
         df = pd.read_csv(uploaded_file)
         st.subheader("📊 Uploaded Data Preview")
         st.dataframe(df.head())
-        
+
         if len(df) > 20:
-            st.warning("Large CSV detected. Processing may take a while.")
+            st.warning("Large CSV detected. Processing may take a while...")
     except Exception as e:
         st.error(f"Failed to read CSV: {e}")
         df = None
@@ -55,27 +55,41 @@ if df is not None and st.button("🔍 Run Exoplanet Detection"):
         if X.ndim == 1:
             X = np.expand_dims(X, axis=0)
 
-        # Resize
+        # Show progress
+        progress_text = st.info("Processing: Resizing sequences...")
         X = resize_sequence(X, target_length=TARGET_LENGTH)
+        progress_text.info("✅ Resize complete.")
 
-        # Preprocessing
+        progress_text.info("Processing: Fourier transform...")
         X_train, X_test = fourier_fixed(X, X, target_length=TARGET_LENGTH)
+        progress_text.info("✅ Fourier transform complete.")
+
+        progress_text.info("Processing: Savitzky–Golay smoothing...")
         X_train = safe_savgol_fixed(X_train, target_length=TARGET_LENGTH)
         X_test  = safe_savgol_fixed(X_test, target_length=TARGET_LENGTH)
+        progress_text.info("✅ Savitzky–Golay complete.")
+
+        progress_text.info("Processing: Normalization...")
         X_train, X_test = norm(X_train, X_test)
+        progress_text.info("✅ Normalization complete.")
+
+        progress_text.info("Processing: Robust scaling...")
         X_train, X_test = robust(X_train, X_test)
+        progress_text.info("✅ Robust scaling complete.")
 
         # Prepare input for CNN
         X_model = np.expand_dims(X_test, axis=-1)
 
         # Predict
         if model:
+            progress_text.info("Predicting with model...")
             preds = model.predict(X_model)
             avg_pred = float(np.mean(preds))
             if avg_pred > 0.5:
                 st.success(f"🌍 Exoplanet Detected! Confidence: {avg_pred:.2f}")
             else:
                 st.info(f"🚫 No Exoplanet Detected. Confidence: {avg_pred:.2f}")
+            progress_text.info("✅ Prediction complete.")
         else:
             st.error("Model not loaded. Place your folder-model in 'my_exo_model.keras/'")
 
@@ -89,4 +103,3 @@ st.markdown("""
 Developer: Maximilian Solomon  
 Libraries: TensorFlow, NumPy, SciPy, scikit-learn, Streamlit
 """)
-
