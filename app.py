@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from tensorflow.keras.models import load_model
-from utils import fourier, savgol, norm, robust, smote
+from utils import fourier, norm, robust, smote  # we replace savgol with safe version below
 
 st.set_page_config(page_title="Exoplanet Detection AI", page_icon="🪐", layout="wide")
 
@@ -16,6 +16,24 @@ Upload a CSV file containing flux data, and the AI will analyze it using
 a preprocessing pipeline:
 **Fourier → Savitzky–Golay → Normalization → Robust Scaling → SMOTE augmentation**.
 """)
+
+# Safe Savitzky–Golay filter
+from scipy.signal import savgol_filter
+
+def safe_savgol(df1, df2, window_length=3198, polyorder=4):
+    def _filter(arr):
+        arr = np.atleast_2d(arr)  # ensure 2D (samples, time_steps)
+        n_time = arr.shape[1]
+
+        wl = min(window_length, n_time)
+        if wl % 2 == 0:
+            wl -= 1
+        if wl < 3:
+            return arr  # too short to filter
+
+        return savgol_filter(arr, window_length=wl, polyorder=polyorder, axis=1, mode='interp')
+
+    return _filter(df1), _filter(df2)
 
 @st.cache_resource
 def load_cnn_model():
@@ -45,15 +63,17 @@ if uploaded_file:
 
     if st.button("🔍 Run Exoplanet Detection"):
         try:
+            # Convert CSV to array with correct shape: (samples, time_steps)
             X = np.array(df.values, dtype=float)
             if X.ndim == 1:
-                X = np.expand_dims(X, axis=0)
-            if X.ndim == 2:
-                X = np.expand_dims(X, axis=-1)
+                X = X[np.newaxis, :]  # (1, n)
+            elif X.ndim == 2 and X.shape[0] == 1:
+                X = X  # keep as (1, n)
 
-            X_train, X_test = X.squeeze(), X.squeeze()
+            # Apply preprocessing pipeline
+            X_train, X_test = X, X  # both train/test same for demo
             X_train, X_test = fourier(X_train, X_test)
-            X_train, X_test = savgol(X_train, X_test)
+            X_train, X_test = safe_savgol(X_train, X_test, window_length=3198)
             X_train, X_test = norm(X_train, X_test)
             X_train, X_test = robust(X_train, X_test)
 
@@ -80,7 +100,7 @@ if uploaded_file:
 st.markdown("---")
 st.subheader("💡 About This Project")
 st.markdown("""
-**A Novel Machine Learning Pipeline for High-Accuracy Exoplanet Light-Cruve Interpretation with Optimized Fourier Analysis and SMOTE Synthesis**  
+**A Novel Machine Learning Pipeline for High-Accuracy Exoplanet Light-Curve Interpretation with Optimized Fourier Analysis and SMOTE Synthesis**  
 - **Developer:** Maximilian Solomon  
 - **Model:** 1D CNN trained on NASA Kepler flux data  
 - **Libraries:** TensorFlow, NumPy, SciPy, scikit-learn, imbalanced-learn, Streamlit  
