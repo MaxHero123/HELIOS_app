@@ -8,11 +8,21 @@ def smote(a, b):
     X, y = model.fit_resample(a, b)
     return X, y
 
-def savgol(df1, df2):
-    x = savgol_filter(df1, 21, 4, deriv=0)
-    y = savgol_filter(df2, 21, 4, deriv=0)
-    return x, y
+from scipy.signal import savgol_filter
 
+def savgol(df1, df2, window_length=None, polyorder=4):
+    def _safe_savgol(data, window_length, polyorder):
+        n = len(data)
+        if n < 3:  # too short to smooth
+            return data
+        # window_length must be odd and <= n
+        if window_length is None or window_length > n:
+            window_length = n if n % 2 == 1 else n-1
+        return savgol_filter(data, window_length, polyorder, deriv=0)
+    
+    x = _safe_savgol(df1, window_length, polyorder)
+    y = _safe_savgol(df2, window_length, polyorder)
+    return x, y
 def fourier(df1, df2):
     X_train = np.abs(np.fft.fft(df1, axis=1))
     X_test = np.abs(np.fft.fft(df2, axis=1))
