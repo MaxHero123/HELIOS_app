@@ -10,20 +10,18 @@ st.set_page_config(page_title="Exoplanet Detection AI", page_icon="🪐", layout
 
 st.title("🪐 HELIOS (Exoplanet Detection AI)")
 st.markdown("""
-This web app uses a **1D Convolutional Neural Network (CNN)** trained on flux data 
-to detect the presence of **exoplanets** in light curves.
+This web app uses a **1D CNN** trained on flux data to detect exoplanets.
 
-Upload a CSV file containing flux data, and the AI will analyze it using a preprocessing pipeline:
-**Resize → Fourier → Savitzky–Golay → Normalization → Robust Scaling**.
+Pipeline: **Resize → Fourier → Savitzky–Golay → Normalization → Robust Scaling**
 """)
 
 # -----------------------
-# Load model the way you did
+# Load model
 # -----------------------
 @st.cache_resource
 def load_cnn_model():
     try:
-        return load_model("model/my_exo_model.keras")  # folder model
+        return load_model("model/my_exo_model.keras")  # load folder model
     except Exception as e:
         st.error(f"Model not found or failed to load: {e}")
         return None
@@ -34,38 +32,43 @@ model = load_model(model_path)
 # -----------------------
 # File uploader
 # -----------------------
-uploaded_file = st.file_uploader("📂 Upload your flux data (CSV)", type=["csv"])
+uploaded_file = st.file_uploader("📂 Upload CSV flux data", type=["csv"])
 
 if uploaded_file:
     df = pd.read_csv(uploaded_file)
-    st.subheader("📊 Uploaded Data Preview")
+    st.subheader("Data Preview")
     st.dataframe(df.head())
 
     fig, ax = plt.subplots()
     ax.plot(df.iloc[:, 0], color="orange")
     ax.set_xlabel("Time Step")
-    ax.set_ylabel("Flux Value")
-    ax.set_title("Flux Light Curve")
+    ax.set_ylabel("Flux")
+    ax.set_title("Light Curve")
     st.pyplot(fig)
 
-    if st.button("🔍 Run Exoplanet Detection"):
+    if st.button("🔍 Run Detection"):
         try:
             X = np.array(df.values, dtype=float)
             if X.ndim == 1:
                 X = np.expand_dims(X, axis=0)
 
-            # Resize to ensure 1200 features for CNN
+            # Resize to model input
             X = resize_sequence(X, target_length=1200)
 
-            # Preprocessing pipeline
+            # Preprocessing
             X_train, X_test = fourier_fixed(X, X, target_length=1200)
             X_train, X_test = safe_savgol(X_train, X_test)
+            # Ensure exactly 1200 features after Savitzky–Golay
+            X_train = resize_sequence(X_train, target_length=1200)
+            X_test = resize_sequence(X_test, target_length=1200)
+
             X_train, X_test = norm(X_train, X_test)
             X_train, X_test = robust(X_train, X_test)
 
-            # CNN expects (batch, 1200, 1)
-            X_model = np.expand_dims(X_test, axis=-1)
+            # Prepare for CNN
+            X_model = np.expand_dims(X_test, axis=-1)  # shape = (batch, 1200, 1)
 
+            # Predict
             if model:
                 preds = model.predict(X_model)
                 avg_pred = float(np.mean(preds))
@@ -74,17 +77,16 @@ if uploaded_file:
                 else:
                     st.info(f"🚫 No Exoplanet Detected. Confidence: {avg_pred:.2f}")
             else:
-                st.error("Model not loaded. Please upload your trained model to the 'model' folder.")
+                st.error("Model not loaded. Place folder-model in 'model/my_exo_model.keras/'")
 
         except Exception as e:
-            st.error(f"Error while processing data: {e}")
+            st.error(f"Error processing data: {e}")
 
 st.markdown("---")
-st.subheader("💡 About This Project")
+st.subheader("💡 About")
 st.markdown("""
-**A Novel Machine Learning Pipeline for High-Accuracy Exoplanet Light-Curve Interpretation**  
-- **Developer:** Maximilian Solomon  
-- **Model:** 1D CNN trained on NASA Kepler flux data  
-- **Libraries:** TensorFlow, NumPy, SciPy, scikit-learn, Streamlit  
+**1D CNN trained on Kepler flux data**  
+Developer: Maximilian Solomon  
+Libraries: TensorFlow, NumPy, SciPy, scikit-learn, Streamlit
 """)
 
