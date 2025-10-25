@@ -52,12 +52,12 @@ if uploaded_file:
                 X = np.expand_dims(X, axis=0)
 
             # -----------------------
-            # Resize to model's expected input length
+            # Resize to CNN input length
             # -----------------------
             X = resize_sequence(X, target_length=TARGET_LENGTH)
 
             # -----------------------
-            # Preprocessing pipeline
+            # Preprocessing
             # -----------------------
             X_train, X_test = fourier_fixed(X, X, target_length=TARGET_LENGTH)
             X_train = safe_savgol_fixed(X_train, target_length=TARGET_LENGTH)
@@ -68,7 +68,7 @@ if uploaded_file:
             # -----------------------
             # Prepare input for CNN
             # -----------------------
-            X_model = np.expand_dims(X_test, axis=-1)  # shape = (batch, 3917, 1)
+            X_model = np.expand_dims(X_test, axis=-1)  # shape = (batch, 3198, 1)
 
             # -----------------------
             # Predict
@@ -93,4 +93,3 @@ st.markdown("""
 Developer: Maximilian Solomon  
 Libraries: TensorFlow, NumPy, SciPy, scikit-learn, Streamlit
 """)
-
