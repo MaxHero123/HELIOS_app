@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from tensorflow.keras.models import load_model
-from utils import resize_sequence, fourier_fixed, safe_savgol_fixed, norm, robust
+from utils import resize_sequence, fourier_fixed, safe_savgol_fixed, norm, robust, TARGET_LENGTH
 import streamlit as st
 import os
 
@@ -16,12 +16,12 @@ Pipeline: **Resize → Fourier → Savitzky–Golay → Normalization → Robust
 """)
 
 # -----------------------
-# Load model (folder format)
+# Load model
 # -----------------------
 @st.cache_resource
 def load_cnn_model():
     try:
-        return load_model("model/my_exo_model.keras")  # load folder model
+        return load_model("model/my_exo_model.keras")  # load folder-model
     except Exception as e:
         st.error(f"Model not found or failed to load: {e}")
         return None
@@ -52,23 +52,28 @@ if uploaded_file:
             if X.ndim == 1:
                 X = np.expand_dims(X, axis=0)
 
-            # 1. Resize to 1200
-            X = resize_sequence(X, target_length=1200)
+            # -----------------------
+            # Resize to model's target length
+            # -----------------------
+            X = resize_sequence(X, target_length=TARGET_LENGTH)
 
-            # 2. Fourier
-            X_train, X_test = fourier_fixed(X, X, target_length=1200)
-
-            # 3. Savitzky–Golay + final resize
-            X_train = safe_savgol_fixed(X_train, target_length=1200)
-            X_test  = safe_savgol_fixed(X_test, target_length=1200)
-
-            # 4. Normalize + Robust
+            # -----------------------
+            # Preprocessing
+            # -----------------------
+            X_train, X_test = fourier_fixed(X, X, target_length=TARGET_LENGTH)
+            X_train = safe_savgol_fixed(X_train, target_length=TARGET_LENGTH)
+            X_test  = safe_savgol_fixed(X_test, target_length=TARGET_LENGTH)
             X_train, X_test = norm(X_train, X_test)
             X_train, X_test = robust(X_train, X_test)
 
-            # 5. Prepare for CNN
-            X_model = np.expand_dims(X_test, axis=-1)  # shape = (batch, 1200, 1)
+            # -----------------------
+            # Prepare for CNN
+            # -----------------------
+            X_model = np.expand_dims(X_test, axis=-1)  # shape = (batch, 3917, 1)
 
+            # -----------------------
+            # Predict
+            # -----------------------
             if model:
                 preds = model.predict(X_model)
                 avg_pred = float(np.mean(preds))
