@@ -58,6 +58,13 @@ if df is not None and st.button("🔍 Run Exoplanet Detection"):
         if X.ndim == 1:
             X = np.expand_dims(X, axis=0)
 
+        # -----------------------
+        # Step 0: Clean input
+        # -----------------------
+        st.info("Cleaning input data...")
+        X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
+        st.success("✅ Input cleaned (NaNs/Infs handled)")
+
         total_steps = 5
         step_counter = 0
 
@@ -68,6 +75,7 @@ if df is not None and st.button("🔍 Run Exoplanet Detection"):
             X = resize_sequence(X, target_length=TARGET_LENGTH)
         step_counter += 1
         st.success(f"✅ Step {step_counter}/{total_steps}: Resize complete")
+        st.write("Resize check:", "NaNs =", np.isnan(X).sum(), "Min =", np.min(X), "Max =", np.max(X))
 
         # -----------------------
         # Step 2: Fourier transform
@@ -76,6 +84,7 @@ if df is not None and st.button("🔍 Run Exoplanet Detection"):
             X_train, X_test = fourier_fixed(X, X, target_length=TARGET_LENGTH)
         step_counter += 1
         st.success(f"✅ Step {step_counter}/{total_steps}: Fourier transform complete")
+        st.write("Fourier check:", "NaNs =", np.isnan(X_test).sum(), "Min =", np.min(X_test), "Max =", np.max(X_test))
 
         # -----------------------
         # Step 3: Savitzky-Golay smoothing
@@ -85,6 +94,7 @@ if df is not None and st.button("🔍 Run Exoplanet Detection"):
             X_test  = safe_savgol_fixed(X_test, target_length=TARGET_LENGTH)
         step_counter += 1
         st.success(f"✅ Step {step_counter}/{total_steps}: Savitzky–Golay complete")
+        st.write("Savitzky-Golay check:", "NaNs =", np.isnan(X_test).sum(), "Min =", np.min(X_test), "Max =", np.max(X_test))
 
         # -----------------------
         # Step 4: Normalization
@@ -93,6 +103,7 @@ if df is not None and st.button("🔍 Run Exoplanet Detection"):
             X_train, X_test = norm(X_train, X_test)
         step_counter += 1
         st.success(f"✅ Step {step_counter}/{total_steps}: Normalization complete")
+        st.write("Normalization check:", "NaNs =", np.isnan(X_test).sum(), "Min =", np.min(X_test), "Max =", np.max(X_test))
 
         # -----------------------
         # Step 5: Robust scaling
@@ -101,11 +112,13 @@ if df is not None and st.button("🔍 Run Exoplanet Detection"):
             X_train, X_test = robust(X_train, X_test)
         step_counter += 1
         st.success(f"✅ Step {step_counter}/{total_steps}: Robust scaling complete")
+        st.write("Robust scaling check:", "NaNs =", np.isnan(X_test).sum(), "Min =", np.min(X_test), "Max =", np.max(X_test))
 
         # -----------------------
         # Prepare input for CNN
         # -----------------------
         X_model = np.expand_dims(X_test, axis=-1)
+        st.write("X_model shape:", X_model.shape)
 
         # -----------------------
         # Predict
@@ -113,6 +126,8 @@ if df is not None and st.button("🔍 Run Exoplanet Detection"):
         if model:
             with st.spinner("Predicting with model..."):
                 preds = model.predict(X_model)
+                # Ensure no NaNs propagate
+                preds = np.nan_to_num(preds, nan=0.0, posinf=0.0, neginf=0.0)
                 avg_pred = float(np.mean(preds))
             if avg_pred > 0.5:
                 st.success(f"🌍 Exoplanet Detected! Confidence: {avg_pred:.2f}")
