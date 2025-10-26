@@ -4,7 +4,7 @@ import streamlit as st
 import numpy as np
 import pandas as pd
 from tensorflow.keras.models import load_model
-from utils import resize_sequence, fourier_fixed, norm, TARGET_LENGTH
+from utils import resize_sequence, fourier_fixed, safe_savgol_fixed, norm, robust, TARGET_LENGTH
 
 # Ensure utils.py is found
 sys.path.append(os.path.dirname(__file__))
@@ -17,7 +17,7 @@ st.title("🪐 HELIOS (Exoplanet Detection AI)")
 st.markdown("""
 This web app uses a **1D CNN** trained on flux data to detect exoplanets.
 
-Pipeline: **Resize → Fourier → Normalization**
+Pipeline: **Resize → Fourier → Savitzky–Golay → Normalization → Robust Scaling → Sliding-window detection**
 """)
 
 # -----------------------
@@ -74,36 +74,52 @@ if df is not None and st.button("🔍 Run Exoplanet Detection"):
         # Step 3: Fourier Transform
         # -----------------------
         st.info("Applying Fourier transform...")
-        _, X_test = fourier_fixed(X, X, target_length=TARGET_LENGTH)
+        X_train, X_test = fourier_fixed(X, X, target_length=TARGET_LENGTH)
         st.success("✅ Fourier transform complete")
 
         # -----------------------
-        # Step 4: Normalization
+        # Step 4: Savitzky–Golay smoothing
+        # -----------------------
+        st.info("Applying Savitzky–Golay smoothing...")
+        X_train = safe_savgol_fixed(X_train, target_length=TARGET_LENGTH)
+        X_test = safe_savgol_fixed(X_test, target_length=TARGET_LENGTH)
+        st.success("✅ Savitzky–Golay complete")
+
+        # -----------------------
+        # Step 5: Normalization
         # -----------------------
         st.info("Normalizing data...")
-        _, X_test = norm(X_test, X_test)
+        X_train, X_test = norm(X_train, X_test)
         st.success("✅ Normalization complete")
 
         # -----------------------
-        # Step 5: Prepare for model
+        # Step 6: Robust scaling
         # -----------------------
-        X_model = np.expand_dims(X_test, axis=-1)
-        st.write("Input shape for model:", X_model.shape)
+        st.info("Applying robust scaling...")
+        X_train, X_test = robust(X_train, X_test)
+        st.success("✅ Robust scaling complete")
 
         # -----------------------
-        # Step 6: Predict
+        # Step 7: Sliding-window prediction
         # -----------------------
-        if model:
-            preds = model.predict(X_model)
-            avg_pred = float(np.mean(preds))
-            st.write(f"**Model output:** {avg_pred:.3f}")
+        st.info("Running sliding-window detection...")
 
-            if avg_pred > 0.5:
-                st.success(f"🌍 Exoplanet Detected! Confidence: {avg_pred:.2f}")
-            else:
-                st.info(f"🚫 No Exoplanet Detected. Confidence: {avg_pred:.2f}")
+        window_size = TARGET_LENGTH  # matches model input
+        stride = TARGET_LENGTH // 2  # 50% overlap
+
+        max_pred = 0.0
+        for start in range(0, X_test.shape[1] - window_size + 1, stride):
+            window = X_test[:, start:start + window_size]
+            window_input = np.expand_dims(window, axis=-1)
+            preds = model.predict(window_input, verbose=0)
+            max_pred = max(max_pred, float(np.max(preds)))
+
+        st.write(f"**Maximum model output from all windows:** {max_pred:.3f}")
+
+        if max_pred > 0.5:
+            st.success(f"🌍 Exoplanet Detected! Confidence: {max_pred:.2f}")
         else:
-            st.error("Model not loaded properly.")
+            st.info(f"🚫 No Exoplanet Detected. Confidence: {max_pred:.2f}")
 
     except Exception as e:
         st.error(f"Error while processing data: {e}")
