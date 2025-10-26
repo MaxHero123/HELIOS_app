@@ -7,7 +7,7 @@ from utils import preprocess_flux, augment_single_flux, TARGET_LENGTH
 st.set_page_config(page_title="HELIOS - Exoplanet Detection AI", page_icon="🪐")
 st.title("🪐 HELIOS (Exoplanet Detection AI)")
 
-model_path = "my_exo_model.keras"
+model_path = "my_exo_model (3).keras"
 try:
     model = load_model(model_path)
 except Exception as e:
