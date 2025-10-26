@@ -33,11 +33,10 @@ except Exception as e:
     model = None
 
 # -----------------------
-# File uploader & flux column selection
+# File uploader
 # -----------------------
 uploaded_file = st.file_uploader("📂 Upload CSV flux data", type=["csv"])
 df = None
-flux_column = None
 
 if uploaded_file:
     try:
@@ -47,18 +46,15 @@ if uploaded_file:
         if len(df) > 20:
             st.warning("Large CSV detected. Processing may take a while...")
 
-        # Detect numeric columns
+        # Detect numeric columns (exclude index or LABEL)
         numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
-        numeric_cols = [c for c in numeric_cols if c.lower() not in ['index', 'label']]
+        flux_cols = [c for c in numeric_cols if c.lower() not in ['index','label']]
 
-        if len(numeric_cols) == 0:
-            st.error("No numeric flux columns detected. Please check your CSV.")
+        if len(flux_cols) == 0:
+            st.error("No numeric flux columns found. Please check your CSV.")
             df = None
-        elif len(numeric_cols) == 1:
-            flux_column = numeric_cols[0]
-            st.info(f"Using flux column: {flux_column}")
         else:
-            flux_column = st.selectbox("Select the flux column to use:", numeric_cols)
+            st.info(f"Using {len(flux_cols)} flux columns for the light curve sequence.")
 
     except Exception as e:
         st.error(f"Failed to read CSV: {e}")
@@ -67,14 +63,15 @@ if uploaded_file:
 # -----------------------
 # Run detection
 # -----------------------
-if df is not None and flux_column is not None and st.button("🔍 Run Exoplanet Detection"):
+if df is not None and st.button("🔍 Run Exoplanet Detection"):
 
     if model is None:
         st.error("Model is not loaded. Cannot run detection.")
     else:
         try:
-            # Extract selected flux column
-            X = df[flux_column].values.astype(float)
+            # Use all detected flux columns as the sequence
+            flux_cols = [c for c in df.select_dtypes(include=np.number).columns if c.lower() not in ['index','label']]
+            X = df[flux_cols].values.astype(float)
             if X.ndim == 1:
                 X = np.expand_dims(X, axis=0)
 
@@ -135,7 +132,7 @@ if df is not None and flux_column is not None and st.button("🔍 Run Exoplanet 
             for row in X_test:
                 for start in range(0, row.shape[0] - window_size + 1, stride):
                     window = row[start:start + window_size]
-                    window_input = np.expand_dims(window, axis=(0, -1))  # shape (1, length, 1)
+                    window_input = np.expand_dims(window, axis=(0, -1))
                     preds = model.predict(window_input, verbose=0)
                     max_pred = max(max_pred, float(np.max(preds)))
 
