@@ -1,5 +1,4 @@
 import os
-import sys
 import streamlit as st
 import numpy as np
 import pandas as pd
@@ -9,7 +8,7 @@ from io import BytesIO
 import base64
 
 # -----------------------
-# Streamlit setup
+# Page setup
 # -----------------------
 st.set_page_config(page_title="Exoplanet Detection AI", page_icon="🪐", layout="wide")
 st.title("🪐 HELIOS (Exoplanet Detection AI)")
@@ -39,13 +38,6 @@ if uploaded_file:
         df = pd.read_csv(uploaded_file)
         st.subheader("Uploaded Data Preview")
         st.dataframe(df.head())
-        numeric_cols = df.select_dtypes(include=np.number).columns
-        flux_cols = [c for c in numeric_cols if c.lower() != 'label']
-        if len(flux_cols) == 0:
-            st.error("No numeric flux columns found in CSV.")
-            df = None
-        else:
-            st.info(f"Using {len(flux_cols)} numeric columns as light curve sequence")
     except Exception as e:
         st.error(f"Failed to read CSV: {e}")
         df = None
@@ -54,53 +46,45 @@ if uploaded_file:
 # Run detection
 # -----------------------
 if df is not None and st.button("Run Exoplanet Detection"):
+
     if model is None:
         st.error("Model is not loaded. Cannot run detection.")
     else:
         try:
+            # Force the correct 3198 flux columns in order
+            flux_cols = [f'FLUX.{i}' for i in range(1, 3199)]
+            for c in flux_cols:
+                if c not in df.columns:
+                    st.error(f"Missing column: {c}. Ensure CSV is from exoTrain/exoTest dataset.")
+                    raise ValueError("Missing flux column")
+
+            # Take all rows (or just first for testing)
             X = df[flux_cols].values.astype(float)
-            if X.ndim == 1:
-                X = np.expand_dims(X, axis=0)
 
-            # -----------------------
             # FFT magnitude
-            # -----------------------
-            X_fft = np.abs(np.fft.fft(X, n=X.shape[1], axis=1))
-            st.success("FFT complete")
+            X_fft = np.abs(np.fft.fft(X, n=3198, axis=1))
 
-            # -----------------------
-            # Optional Savitzky–Golay smoothing
-            # -----------------------
-            X_fft = safe_savgol_fixed(X_fft, target_length=X_fft.shape[1])
-            st.success("Savitzky–Golay complete")
+            # Optional smoothing
+            X_fft = safe_savgol_fixed(X_fft, target_length=3198)
 
-            # -----------------------
             # Prepare input for CNN
-            # -----------------------
-            X_input = np.expand_dims(X_fft, axis=-1)  # shape: (batch, length, 1)
+            X_input = np.expand_dims(X_fft, axis=-1)  # shape: (batch, 3198, 1)
 
-            # -----------------------
-            # Sliding-window prediction
-            # -----------------------
-            max_pred = 0.0
-            for row in X_input:
-                preds = model.predict(np.expand_dims(row, axis=0), verbose=0)
-                max_pred = max(max_pred, float(np.max(preds)))
-
+            # Predict
+            preds = model.predict(X_input, verbose=0)
+            max_pred = float(np.max(preds))
             st.write(f"Maximum model output: {max_pred:.3f}")
+
             if max_pred > 0.5:
                 st.success(f"🌍 Exoplanet Detected! Confidence: {max_pred:.2f}")
             else:
                 st.info(f"🚫 No Exoplanet Detected. Confidence: {max_pred:.2f}")
 
-            # -----------------------
             # Download preprocessed FFT CSV
-            # -----------------------
-            processed_df = pd.DataFrame(X_fft, columns=[f'FFT_{i+1}' for i in range(X_fft.shape[1])])
+            processed_df = pd.DataFrame(X_fft, columns=[f'FFT_{i+1}' for i in range(3198)])
             csv_buffer = BytesIO()
             processed_df.to_csv(csv_buffer, index=False)
-            csv_data = csv_buffer.getvalue()
-            b64 = base64.b64encode(csv_data).decode()
+            b64 = base64.b64encode(csv_buffer.getvalue()).decode()
             href = f'<a href="data:file/csv;base64,{b64}" download="preprocessed_fft.csv">💾 Download Preprocessed FFT CSV</a>'
             st.markdown(href, unsafe_allow_html=True)
 
