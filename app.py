@@ -5,6 +5,8 @@ import numpy as np
 import pandas as pd
 from tensorflow.keras.models import load_model
 from utils import resize_sequence, fourier_fixed, safe_savgol_fixed, norm, robust, TARGET_LENGTH
+from io import BytesIO
+import base64
 
 # Ensure utils.py is found
 sys.path.append(os.path.dirname(__file__))
@@ -47,7 +49,6 @@ if uploaded_file:
 
         # Detect numeric columns
         numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
-        # Exclude 'index' or 'LABEL' if present
         numeric_cols = [c for c in numeric_cols if c.lower() not in ['index', 'label']]
 
         if len(numeric_cols) == 0:
@@ -144,6 +145,19 @@ if df is not None and flux_column is not None and st.button("🔍 Run Exoplanet 
                 st.success(f"🌍 Exoplanet Detected! Confidence: {max_pred:.2f}")
             else:
                 st.info(f"🚫 No Exoplanet Detected. Confidence: {max_pred:.2f}")
+
+            # -----------------------
+            # Optional: Download preprocessed CSV
+            # -----------------------
+            st.info("Preparing preprocessed data for download...")
+            processed_df = pd.DataFrame(X_test, columns=[f'FLUX_{i+1}' for i in range(X_test.shape[1])])
+            csv_buffer = BytesIO()
+            processed_df.to_csv(csv_buffer, index=False)
+            csv_data = csv_buffer.getvalue()
+            b64 = base64.b64encode(csv_data).decode()
+            href = f'<a href="data:file/csv;base64,{b64}" download="preprocessed_flux.csv">💾 Download Preprocessed CSV</a>'
+            st.markdown(href, unsafe_allow_html=True)
+            st.success("✅ Preprocessed CSV ready for download")
 
         except Exception as e:
             st.error(f"Error while processing data: {e}")
