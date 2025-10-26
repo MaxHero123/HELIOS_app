@@ -1,8 +1,0 @@
-streamlit
-tensorflow
-pandas
-numpy
-scipy
-scikit-learn
-imbalanced-learn
-matplotlib
