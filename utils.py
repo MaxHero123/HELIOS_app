@@ -5,6 +5,9 @@ from sklearn.preprocessing import RobustScaler
 # Match your CNN training input length
 TARGET_LENGTH = 3198  
 
+# -----------------------
+# Resize sequence
+# -----------------------
 def resize_sequence(X, target_length=TARGET_LENGTH):
     """Resize each row of X to exactly target_length points using linear interpolation."""
     X = np.atleast_2d(X)
@@ -17,13 +20,20 @@ def resize_sequence(X, target_length=TARGET_LENGTH):
         )
     return resized
 
-def fourier_fixed(df1, df2, target_length=TARGET_LENGTH):
-    """Apply FFT safely and keep length = target_length"""
+# -----------------------
+# Fourier transform
+# -----------------------
+def fourier_fixed(X1, X2, target_length=TARGET_LENGTH):
+    """Apply FFT safely and return magnitude, length = target_length"""
     def _fft(arr):
         arr = np.atleast_2d(arr)
-        return np.abs(np.fft.fft(arr, n=target_length, axis=1))
-    return _fft(df1), _fft(df2)
+        fft_vals = np.fft.fft(arr, n=target_length, axis=1)
+        return np.abs(fft_vals)
+    return _fft(X1), _fft(X2)
 
+# -----------------------
+# Savitzky–Golay smoothing
+# -----------------------
 def safe_savgol_fixed(X, window_length=21, polyorder=3, target_length=TARGET_LENGTH):
     """Apply Savitzky–Golay safely and resize output to target_length"""
     X = np.atleast_2d(X)
@@ -43,15 +53,28 @@ def safe_savgol_fixed(X, window_length=21, polyorder=3, target_length=TARGET_LEN
         )
     return filtered
 
+# -----------------------
+# Normalization
+# -----------------------
 def norm(X_train, X_test):
+    """Min-max normalization across both arrays"""
     minval = min(np.min(X_train), np.min(X_test))
     maxval = max(np.max(X_train), np.max(X_test))
-    X_train = (X_train - minval) / (maxval - minval)
-    X_test = (X_test - minval) / (maxval - minval)
-    return X_train, X_test
+    if maxval - minval == 0:
+        # Avoid division by zero
+        X_train_norm = np.zeros_like(X_train)
+        X_test_norm = np.zeros_like(X_test)
+    else:
+        X_train_norm = (X_train - minval) / (maxval - minval)
+        X_test_norm = (X_test - minval) / (maxval - minval)
+    return X_train_norm, X_test_norm
 
-def robust(df1, df2):
+# -----------------------
+# Robust scaling
+# -----------------------
+def robust(X1, X2):
+    """Apply RobustScaler to both arrays, fit on X1"""
     scaler = RobustScaler()
-    X_train = scaler.fit_transform(df1)
-    X_test = scaler.transform(df2)
-    return X_train, X_test
+    X1_scaled = scaler.fit_transform(X1)
+    X2_scaled = scaler.transform(X2)
+    return X1_scaled, X2_scaled
