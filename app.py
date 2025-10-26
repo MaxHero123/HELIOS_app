@@ -23,7 +23,7 @@ Pipeline: **FFT → Savitzky–Golay → Min-max → Robust Scaling → Sliding-
 # -----------------------
 # Load model
 # -----------------------
-model_path = os.path.join(os.path.dirname(__file__), "my_exo_model.keras")
+model_path = os.path.join(os.path.dirname(__file__), "my_exo_model (3).keras")
 try:
     model = load_model(model_path)
 except Exception as e:
