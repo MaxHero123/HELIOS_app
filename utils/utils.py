@@ -6,7 +6,7 @@ from sklearn.preprocessing import normalize
 TARGET_LENGTH = 3197
 
 def fourier(X):
-    return np.abs(np.fft.fft(X, axis=1))
+    return np.abs(np.fft.fft(X, n=TARGET_LENGTH, axis=1))
 
 def savgol_fixed(X):
     X_filtered = np.zeros_like(X)
@@ -24,9 +24,18 @@ def robust(X):
     return scaler.fit_transform(X)
 
 def preprocess_flux(X):
-    X = X[:, :TARGET_LENGTH]  # truncate if longer
+    X = X[:, :TARGET_LENGTH]  # truncate
     X_fft = fourier(X)
     X_sg = savgol_fixed(X_fft)
     X_norm = norm(X_sg)
     X_scaled = robust(X_norm)
     return X_scaled
+
+def augment_single_flux(X, repeats=5, noise_level=1e-4):
+    """
+    Duplicate the row multiple times and add tiny noise
+    to mimic training augmentation.
+    """
+    X_batch = np.tile(X, (repeats,1))
+    X_batch += np.random.normal(0, noise_level, X_batch.shape)
+    return X_batch
