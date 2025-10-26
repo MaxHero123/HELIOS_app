@@ -3,7 +3,7 @@ import streamlit as st
 import numpy as np
 import pandas as pd
 from tensorflow.keras.models import load_model
-from utils import safe_savgol_fixed
+from utils import extract_flux, fft_transform, savgol_smooth, minmax_norm, robust_scale, trim_to_target_length, TARGET_LENGTH
 from io import BytesIO
 import base64
 
@@ -13,8 +13,8 @@ import base64
 st.set_page_config(page_title="Exoplanet Detection AI", page_icon="🪐", layout="wide")
 st.title("🪐 HELIOS (Exoplanet Detection AI)")
 st.markdown("""
-**1D CNN trained on FFT of raw Kepler flux data**  
-Pipeline: **FFT → Optional Savitzky–Golay → CNN detection**
+**1D CNN trained on FFT of preprocessed Kepler flux data**  
+Pipeline: **Flux extraction → FFT → Savitzky–Golay → Min-max → RobustScaler → CNN**
 """)
 
 # -----------------------
@@ -51,50 +51,39 @@ if df is not None and st.button("Run Exoplanet Detection"):
         st.error("Model is not loaded. Cannot run detection.")
     else:
         try:
-            # Automatically detect flux columns (starts with 'FLUX')
-            flux_cols = [c for c in df.columns if c.startswith('FLUX')]
-            if len(flux_cols) == 0:
-                st.error("No FLUX columns found in CSV. Make sure your file is from exoTrain/exoTest dataset.")
-                raise ValueError("No flux columns found")
-            st.info(f"Detected {len(flux_cols)} flux columns.")
+            # Step 1: Extract flux columns
+            X = extract_flux(df)
 
-            # Take all rows (or just first confirmed exoplanet for testing)
-            X = df[flux_cols].values.astype(float)
-            if X.ndim == 1:
-                X = np.expand_dims(X, axis=0)
+            # Step 2: FFT
+            X_fft = fft_transform(X)
 
-            # -----------------------
-            # FFT magnitude
-            # -----------------------
-            X_fft = np.abs(np.fft.fft(X, n=X.shape[1], axis=1))
-            st.success("FFT complete")
+            # Step 3: Savitzky–Golay smoothing
+            X_sg = savgol_smooth(X_fft)
 
-            # -----------------------
-            # Optional Savitzky–Golay smoothing
-            # -----------------------
-            X_fft = safe_savgol_fixed(X_fft, target_length=X_fft.shape[1])
-            st.success("Savitzky–Golay smoothing complete")
+            # Step 4: Min-max normalization (optional: use training min/max if available)
+            X_norm = minmax_norm(X_sg)
 
-            # -----------------------
-            # Prepare input for CNN
-            # -----------------------
-            X_input = np.expand_dims(X_fft, axis=-1)  # shape: (batch, length, 1)
+            # Step 5: Robust scaling
+            X_scaled, _ = robust_scale(X_norm)
 
-            # -----------------------
-            # Predict
-            # -----------------------
+            # Step 6: Trim to CNN target length
+            X_ready = trim_to_target_length(X_scaled, TARGET_LENGTH)
+
+            # Step 7: Expand dims for CNN input
+            X_input = np.expand_dims(X_ready, axis=2)  # shape: (batch, 3197, 1)
+
+            # Step 8: Predict
             preds = model.predict(X_input, verbose=0)
             max_pred = float(np.max(preds))
-            st.write(f"Maximum model output: {max_pred:.3f}")
+            st.write(f"Maximum model confidence: {max_pred:.3f}")
             if max_pred > 0.5:
                 st.success(f"🌍 Exoplanet Detected! Confidence: {max_pred:.2f}")
             else:
                 st.info(f"🚫 No Exoplanet Detected. Confidence: {max_pred:.2f}")
 
             # -----------------------
-            # Download preprocessed FFT CSV
-            # -----------------------
-            processed_df = pd.DataFrame(X_fft, columns=[f'FFT_{i+1}' for i in range(X_fft.shape[1])])
+            # Optional: download preprocessed FFT CSV
+            processed_df = pd.DataFrame(X_ready, columns=[f'FFT_{i+1}' for i in range(X_ready.shape[1])])
             csv_buffer = BytesIO()
             processed_df.to_csv(csv_buffer, index=False)
             b64 = base64.b64encode(csv_buffer.getvalue()).decode()
@@ -112,5 +101,5 @@ st.subheader("About")
 st.markdown("""
 **Developer:** Maximilian Solomon  
 **Libraries:** TensorFlow, NumPy, SciPy, Streamlit  
-**Model:** 1D CNN trained on FFT of raw Kepler flux data
+**Model:** 1D CNN trained on FFT of preprocessed Kepler flux data
 """)
