@@ -51,78 +51,89 @@ if uploaded_file:
 # Run detection
 # -----------------------
 if df is not None and st.button("🔍 Run Exoplanet Detection"):
-    try:
-        X = np.array(df.values, dtype=float)
-        if X.ndim == 1:
-            X = np.expand_dims(X, axis=0)
 
-        # -----------------------
-        # Step 1: Clean input
-        # -----------------------
-        st.info("Cleaning input data...")
-        X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
-        st.success("✅ Input cleaned")
+    if model is None:
+        st.error("Model is not loaded. Cannot run detection.")
+    else:
+        try:
+            # -----------------------
+            # Select flux columns only
+            # -----------------------
+            flux_cols = [c for c in df.columns if c.startswith("FLUX")]
+            if len(flux_cols) == 0:
+                st.error("No FLUX columns found in CSV.")
+                st.stop()
 
-        # -----------------------
-        # Step 2: Resize
-        # -----------------------
-        st.info("Resizing sequences...")
-        X = resize_sequence(X, target_length=TARGET_LENGTH)
-        st.success("✅ Resize complete")
+            X = df[flux_cols].values.astype(float)
+            if X.ndim == 1:
+                X = np.expand_dims(X, axis=0)
 
-        # -----------------------
-        # Step 3: Fourier Transform
-        # -----------------------
-        st.info("Applying Fourier transform...")
-        X_train, X_test = fourier_fixed(X, X, target_length=TARGET_LENGTH)
-        st.success("✅ Fourier transform complete")
+            # -----------------------
+            # Clean input
+            # -----------------------
+            st.info("Cleaning input data...")
+            X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
+            st.success("✅ Input cleaned")
 
-        # -----------------------
-        # Step 4: Savitzky–Golay smoothing
-        # -----------------------
-        st.info("Applying Savitzky–Golay smoothing...")
-        X_train = safe_savgol_fixed(X_train, target_length=TARGET_LENGTH)
-        X_test = safe_savgol_fixed(X_test, target_length=TARGET_LENGTH)
-        st.success("✅ Savitzky–Golay complete")
+            # -----------------------
+            # Resize
+            # -----------------------
+            st.info("Resizing sequences...")
+            X = resize_sequence(X, target_length=TARGET_LENGTH)
+            st.success("✅ Resize complete")
 
-        # -----------------------
-        # Step 5: Normalization
-        # -----------------------
-        st.info("Normalizing data...")
-        X_train, X_test = norm(X_train, X_test)
-        st.success("✅ Normalization complete")
+            # -----------------------
+            # Fourier Transform
+            # -----------------------
+            st.info("Applying Fourier transform...")
+            _, X_test = fourier_fixed(X, X, target_length=TARGET_LENGTH)
+            st.success("✅ Fourier transform complete")
 
-        # -----------------------
-        # Step 6: Robust scaling
-        # -----------------------
-        st.info("Applying robust scaling...")
-        X_train, X_test = robust(X_train, X_test)
-        st.success("✅ Robust scaling complete")
+            # -----------------------
+            # Savitzky–Golay smoothing
+            # -----------------------
+            st.info("Applying Savitzky–Golay smoothing...")
+            X_test = safe_savgol_fixed(X_test, target_length=TARGET_LENGTH)
+            st.success("✅ Savitzky–Golay complete")
 
-        # -----------------------
-        # Step 7: Sliding-window prediction
-        # -----------------------
-        st.info("Running sliding-window detection...")
+            # -----------------------
+            # Normalization
+            # -----------------------
+            st.info("Normalizing data...")
+            _, X_test = norm(X_test, X_test)
+            st.success("✅ Normalization complete")
 
-        window_size = TARGET_LENGTH  # matches model input
-        stride = TARGET_LENGTH // 2  # 50% overlap
+            # -----------------------
+            # Robust scaling
+            # -----------------------
+            st.info("Applying robust scaling...")
+            _, X_test = robust(X_test, X_test)
+            st.success("✅ Robust scaling complete")
 
-        max_pred = 0.0
-        for start in range(0, X_test.shape[1] - window_size + 1, stride):
-            window = X_test[:, start:start + window_size]
-            window_input = np.expand_dims(window, axis=-1)
-            preds = model.predict(window_input, verbose=0)
-            max_pred = max(max_pred, float(np.max(preds)))
+            # -----------------------
+            # Sliding-window prediction
+            # -----------------------
+            st.info("Running sliding-window detection...")
+            window_size = TARGET_LENGTH
+            stride = TARGET_LENGTH // 2
+            max_pred = 0.0
 
-        st.write(f"**Maximum model output from all windows:** {max_pred:.3f}")
+            for row in X_test:
+                for start in range(0, row.shape[0] - window_size + 1, stride):
+                    window = row[start:start + window_size]
+                    window_input = np.expand_dims(window, axis=(0, -1))  # shape (1, length, 1)
+                    preds = model.predict(window_input, verbose=0)
+                    max_pred = max(max_pred, float(np.max(preds)))
 
-        if max_pred > 0.5:
-            st.success(f"🌍 Exoplanet Detected! Confidence: {max_pred:.2f}")
-        else:
-            st.info(f"🚫 No Exoplanet Detected. Confidence: {max_pred:.2f}")
+            st.write(f"**Maximum model output from all windows:** {max_pred:.3f}")
 
-    except Exception as e:
-        st.error(f"Error while processing data: {e}")
+            if max_pred > 0.5:
+                st.success(f"🌍 Exoplanet Detected! Confidence: {max_pred:.2f}")
+            else:
+                st.info(f"🚫 No Exoplanet Detected. Confidence: {max_pred:.2f}")
+
+        except Exception as e:
+            st.error(f"Error while processing data: {e}")
 
 # -----------------------
 # About section
