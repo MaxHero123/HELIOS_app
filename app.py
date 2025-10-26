@@ -4,7 +4,7 @@ import streamlit as st
 import numpy as np
 import pandas as pd
 from tensorflow.keras.models import load_model
-from utils import resize_sequence, fourier_fixed, safe_savgol_fixed, norm, robust, TARGET_LENGTH
+from utils import safe_savgol_fixed, norm, robust
 from io import BytesIO
 import base64
 
@@ -17,9 +17,9 @@ sys.path.append(os.path.dirname(__file__))
 st.set_page_config(page_title="Exoplanet Detection AI", page_icon="🪐", layout="wide")
 st.title("🪐 HELIOS (Exoplanet Detection AI)")
 st.markdown("""
-This web app uses a **1D CNN** trained on flux data to detect exoplanets.
+This web app uses a **1D CNN** trained on flux FFT data to detect exoplanets.
 
-Pipeline: **Resize → Fourier → Savitzky–Golay → Normalization → Robust Scaling → Sliding-window detection**
+Pipeline: **FFT → Optional Savitzky–Golay → Normalization → Robust Scaling → Sliding-window detection**
 """)
 
 # -----------------------
@@ -54,7 +54,7 @@ if uploaded_file:
             st.error("No numeric flux columns found. Please check your CSV.")
             df = None
         else:
-            st.info(f"Using {len(flux_cols)} flux columns for the light curve sequence.")
+            st.info(f"Using {len(flux_cols)} numeric columns as the light curve sequence.")
 
     except Exception as e:
         st.error(f"Failed to read CSV: {e}")
@@ -69,64 +69,48 @@ if df is not None and st.button("🔍 Run Exoplanet Detection"):
         st.error("Model is not loaded. Cannot run detection.")
     else:
         try:
-            # Use all detected flux columns as the sequence
+            # Use all numeric columns as sequence
             flux_cols = [c for c in df.select_dtypes(include=np.number).columns if c.lower() not in ['index','label']]
             X = df[flux_cols].values.astype(float)
             if X.ndim == 1:
                 X = np.expand_dims(X, axis=0)
 
-            # Warn about very short sequences
-            if X.shape[1] < 50:
-                st.warning("Sequence is very short; predictions may be unreliable.")
+            st.info(f"Input shape: {X.shape}")
 
             # -----------------------
-            # Step 1: Clean input
+            # Step 1: FFT magnitude
             # -----------------------
-            st.info("Cleaning input data...")
-            X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
-            st.success("✅ Input cleaned")
+            st.info("Computing FFT magnitude...")
+            X_test = np.abs(np.fft.fft(X, n=X.shape[1], axis=1))
+            st.success("✅ FFT complete")
 
             # -----------------------
-            # Step 2: Resize
-            # -----------------------
-            st.info("Resizing sequences...")
-            X = resize_sequence(X, target_length=TARGET_LENGTH)
-            st.success("✅ Resize complete")
-
-            # -----------------------
-            # Step 3: Fourier Transform
-            # -----------------------
-            st.info("Applying Fourier transform...")
-            _, X_test = fourier_fixed(X, X, target_length=TARGET_LENGTH)
-            st.success("✅ Fourier transform complete")
-
-            # -----------------------
-            # Step 4: Savitzky–Golay smoothing
+            # Step 2: Optional Savitzky–Golay smoothing
             # -----------------------
             st.info("Applying Savitzky–Golay smoothing...")
-            X_test = safe_savgol_fixed(X_test, target_length=TARGET_LENGTH)
+            X_test = safe_savgol_fixed(X_test, target_length=X_test.shape[1])
             st.success("✅ Savitzky–Golay complete")
 
             # -----------------------
-            # Step 5: Normalization
+            # Step 3: Normalization
             # -----------------------
             st.info("Normalizing data...")
             _, X_test = norm(X_test, X_test)
             st.success("✅ Normalization complete")
 
             # -----------------------
-            # Step 6: Robust scaling
+            # Step 4: Robust scaling
             # -----------------------
             st.info("Applying robust scaling...")
             _, X_test = robust(X_test, X_test)
             st.success("✅ Robust scaling complete")
 
             # -----------------------
-            # Step 7: Sliding-window prediction
+            # Step 5: Sliding-window prediction
             # -----------------------
             st.info("Running sliding-window detection...")
-            window_size = TARGET_LENGTH
-            stride = TARGET_LENGTH // 2
+            window_size = X_test.shape[1]  # single window for full FFT
+            stride = window_size // 2
             max_pred = 0.0
 
             for row in X_test:
@@ -146,15 +130,15 @@ if df is not None and st.button("🔍 Run Exoplanet Detection"):
             # -----------------------
             # Optional: Download preprocessed CSV
             # -----------------------
-            st.info("Preparing preprocessed data for download...")
-            processed_df = pd.DataFrame(X_test, columns=[f'FLUX_{i+1}' for i in range(X_test.shape[1])])
+            st.info("Preparing preprocessed FFT data for download...")
+            processed_df = pd.DataFrame(X_test, columns=[f'FFT_{i+1}' for i in range(X_test.shape[1])])
             csv_buffer = BytesIO()
             processed_df.to_csv(csv_buffer, index=False)
             csv_data = csv_buffer.getvalue()
             b64 = base64.b64encode(csv_data).decode()
-            href = f'<a href="data:file/csv;base64,{b64}" download="preprocessed_flux.csv">💾 Download Preprocessed CSV</a>'
+            href = f'<a href="data:file/csv;base64,{b64}" download="preprocessed_fft.csv">💾 Download Preprocessed FFT CSV</a>'
             st.markdown(href, unsafe_allow_html=True)
-            st.success("✅ Preprocessed CSV ready for download")
+            st.success("✅ Preprocessed FFT CSV ready for download")
 
         except Exception as e:
             st.error(f"Error while processing data: {e}")
@@ -165,7 +149,7 @@ if df is not None and st.button("🔍 Run Exoplanet Detection"):
 st.markdown("---")
 st.subheader("💡 About This Project")
 st.markdown("""
-**1D CNN trained on Kepler flux data**  
+**1D CNN trained on FFT of Kepler flux data**  
 Developer: Maximilian Solomon  
 Libraries: TensorFlow, NumPy, SciPy, scikit-learn, Streamlit
 """)
