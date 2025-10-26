@@ -2,12 +2,12 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from tensorflow.keras.models import load_model
-from utils import preprocess_flux, TARGET_LENGTH
+from utils import preprocess_flux, augment_single_flux, TARGET_LENGTH
 
 st.set_page_config(page_title="HELIOS - Exoplanet Detection AI", page_icon="🪐")
 st.title("🪐 HELIOS (Exoplanet Detection AI)")
 
-model_path = "my_exo_model (3).keras"
+model_path = "my_exo_model.keras"
 try:
     model = load_model(model_path)
 except Exception as e:
@@ -25,10 +25,20 @@ if uploaded_file and model:
         if X.shape[1] < TARGET_LENGTH:
             st.error(f"Sequence too short: {X.shape[1]}. Must be {TARGET_LENGTH} flux points.")
         else:
-            X_processed = preprocess_flux(X)
-            X_input = X_processed.reshape(1, TARGET_LENGTH, 1)
-            pred = model.predict(X_input, verbose=0)
-            conf = float(pred[0][0])
+            # preprocess
+            X_proc = preprocess_flux(X)
+            
+            # if single row, augment like training
+            if X_proc.shape[0] == 1:
+                X_proc = augment_single_flux(X_proc)
+
+            # reshape for CNN
+            X_input = X_proc.reshape(X_proc.shape[0], TARGET_LENGTH, 1)
+
+            # predict on batch, take max confidence
+            preds = model.predict(X_input, verbose=0)
+            conf = float(np.max(preds))
+
             st.write(f"**Confidence:** {conf:.3f}")
             if conf > 0.5:
                 st.success(f"🌍 Exoplanet Detected! Confidence: {conf:.2f}")
