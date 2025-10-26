@@ -31,10 +31,11 @@ except Exception as e:
     model = None
 
 # -----------------------
-# File uploader
+# File uploader & flux column selection
 # -----------------------
 uploaded_file = st.file_uploader("📂 Upload CSV flux data", type=["csv"])
 df = None
+flux_column = None
 
 if uploaded_file:
     try:
@@ -43,6 +44,21 @@ if uploaded_file:
         st.dataframe(df.head())
         if len(df) > 20:
             st.warning("Large CSV detected. Processing may take a while...")
+
+        # Detect numeric columns
+        numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
+        # Exclude 'index' or 'LABEL' if present
+        numeric_cols = [c for c in numeric_cols if c.lower() not in ['index', 'label']]
+
+        if len(numeric_cols) == 0:
+            st.error("No numeric flux columns detected. Please check your CSV.")
+            df = None
+        elif len(numeric_cols) == 1:
+            flux_column = numeric_cols[0]
+            st.info(f"Using flux column: {flux_column}")
+        else:
+            flux_column = st.selectbox("Select the flux column to use:", numeric_cols)
+
     except Exception as e:
         st.error(f"Failed to read CSV: {e}")
         df = None
@@ -50,68 +66,65 @@ if uploaded_file:
 # -----------------------
 # Run detection
 # -----------------------
-if df is not None and st.button("🔍 Run Exoplanet Detection"):
+if df is not None and flux_column is not None and st.button("🔍 Run Exoplanet Detection"):
 
     if model is None:
         st.error("Model is not loaded. Cannot run detection.")
     else:
         try:
-            # -----------------------
-            # Select flux columns only
-            # -----------------------
-            flux_cols = [c for c in df.columns if c.startswith("FLUX")]
-            if len(flux_cols) == 0:
-                st.error("No FLUX columns found in CSV.")
-                st.stop()
-
-            X = df[flux_cols].values.astype(float)
+            # Extract selected flux column
+            X = df[flux_column].values.astype(float)
             if X.ndim == 1:
                 X = np.expand_dims(X, axis=0)
 
+            # Warn about very short sequences
+            if X.shape[1] < 50:
+                st.warning("Sequence is very short; predictions may be unreliable.")
+
             # -----------------------
-            # Clean input
+            # Step 1: Clean input
             # -----------------------
             st.info("Cleaning input data...")
             X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
             st.success("✅ Input cleaned")
 
             # -----------------------
-            # Resize
+            # Step 2: Resize
             # -----------------------
             st.info("Resizing sequences...")
             X = resize_sequence(X, target_length=TARGET_LENGTH)
             st.success("✅ Resize complete")
 
             # -----------------------
-            # Fourier Transform
+            # Step 3: Fourier Transform
             # -----------------------
             st.info("Applying Fourier transform...")
             _, X_test = fourier_fixed(X, X, target_length=TARGET_LENGTH)
             st.success("✅ Fourier transform complete")
 
             # -----------------------
-            # Savitzky–Golay smoothing
+            # Step 4: Savitzky–Golay smoothing
             # -----------------------
             st.info("Applying Savitzky–Golay smoothing...")
             X_test = safe_savgol_fixed(X_test, target_length=TARGET_LENGTH)
             st.success("✅ Savitzky–Golay complete")
 
             # -----------------------
-            # Normalization
+            # Step 5: Normalization
             # -----------------------
             st.info("Normalizing data...")
             _, X_test = norm(X_test, X_test)
             st.success("✅ Normalization complete")
 
             # -----------------------
-            # Robust scaling
+            # Step 6: Robust scaling
             # -----------------------
             st.info("Applying robust scaling...")
             _, X_test = robust(X_test, X_test)
             st.success("✅ Robust scaling complete")
 
             # -----------------------
-            # Sliding-window prediction
+            # Step 7: Sliding-window prediction
             # -----------------------
             st.info("Running sliding-window detection...")
             window_size = TARGET_LENGTH
