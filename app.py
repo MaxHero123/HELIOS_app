@@ -8,7 +8,7 @@ from utils import preprocess_flux, TARGET_LENGTH
 st.set_page_config(page_title="Exoplanet Detection AI", page_icon="🪐", layout="wide")
 st.title("🪐 HELIOS (Exoplanet Detection AI)")
 
-# Load model
+# Load CNN model
 model_path = os.path.join(os.path.dirname(__file__), "my_exo_model.keras")
 try:
     model = load_model(model_path)
@@ -31,16 +31,16 @@ if uploaded_file:
 # Run detection
 if df is not None and st.button("Run Exoplanet Detection") and model is not None:
     try:
-        # Auto-detect flux columns
+        # Detect flux columns
         flux_cols = [c for c in df.columns if "FLUX" in c.upper()]
         if len(flux_cols) == 0:
             st.error("No FLUX columns found in CSV")
         else:
             X = df[flux_cols].values.astype(float)
 
-            # Preprocess for CNN
+            # Preprocess exactly like training
             X_ready = preprocess_flux(X, TARGET_LENGTH)
-            X_input = np.expand_dims(X_ready, axis=2)  # shape: (batch, 3197, 1)
+            X_input = np.expand_dims(X_ready, axis=2)  # (batch, 3197, 1)
 
             # Predict
             preds = model.predict(X_input, verbose=0)
@@ -50,5 +50,6 @@ if df is not None and st.button("Run Exoplanet Detection") and model is not None
                 st.success(f"🌍 Exoplanet Detected! Confidence: {max_pred:.2f}")
             else:
                 st.info(f"🚫 No Exoplanet Detected. Confidence: {max_pred:.2f}")
+
     except Exception as e:
         st.error(f"Error during processing: {e}")
